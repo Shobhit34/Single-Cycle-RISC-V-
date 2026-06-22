@@ -6,7 +6,7 @@ endmodule
 
 // mux2
 
-module mux2(input a,b,s,output c);
+module mux2(input [31:0]a,b,s,output [31:0]c);
 assign c=s?a:b;
 endmodule
 
@@ -14,7 +14,7 @@ endmodule
 
 module InsMem( input [31:0]A, output [31:0]RD);
 reg [31:0]I_Mem[63:0];
-assign output=I_Men[A];
+assign RD=I_Men[A];
 endmodule
 
 // ALU
@@ -80,5 +80,23 @@ module extend (
             default: ImmExt = 32'hDEADBEEF;
         endcase
     end
+
+endmodule
+
+
+
+// Data Memory
+
+module datam(input [31:0]A,input clk, input WE, input [31:0]WD, output [31:0]RD);
+
+reg [31:0] D_Mem[63:0];
+
+    // synchronous write
+    always @(posedge CLK)
+        if (WE)
+            D_Mem[A[7:2]] <= WD;
+
+    // asynchronous read
+    assign RD = D_Mem[A[7:2]];
 
 endmodule
