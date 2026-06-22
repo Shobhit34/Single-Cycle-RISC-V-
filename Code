@@ -1,13 +1,13 @@
 // Adder
 
-module(input a , b , output c);
-c=a+b;
+module add(input a , b , output c);
+assign c=a+b;
 endmodule
 
 // mux2
 
-module(input a,b,s,output c);
-c=s?a:b;
+module mux2(input a,b,s,output c);
+assign c=s?a:b;
 endmodule
 
 // Instruction Memory
@@ -44,5 +44,21 @@ endmodule
 
 // Register File
 
-module reg( input clk , A1, A2, A3 , WD3, output RD1,RD2);
-reg [31:0] registers [0:31];
+module regfile (
+    input         CLK,
+    input         WE3,
+    input  [4:0]  A1, A2, A3,
+    input  [31:0] WD3,
+    output [31:0] RD1, RD2
+);
+    reg [31:0] regs [31:0];
+
+    // synchronous write
+    always @(posedge CLK)
+        if (WE3 && A3 != 0)
+            regs[A3] <= WD3;
+
+    // asynchronous read, x0 hardwired to 0
+    assign RD1 = (A1 == 0) ? 32'b0 : regs[A1];
+    assign RD2 = (A2 == 0) ? 32'b0 : regs[A2];
+endmodule
