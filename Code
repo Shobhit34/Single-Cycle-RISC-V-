@@ -1,6 +1,6 @@
 // Adder
 
-module add(input a , b , output c);
+module add(input [31:0]a , b , output [31:0]c);
 assign c=a+b;
 endmodule
 
@@ -12,7 +12,7 @@ endmodule
 
 // Instruction Memory
 
-module ( input [31:0]A, output [31:0]RD);
+module InsMem( input [31:0]A, output [31:0]RD);
 reg [31:0]I_Mem[63:0];
 assign output=I_Men[A];
 endmodule
@@ -61,4 +61,24 @@ module regfile (
     // asynchronous read, x0 hardwired to 0
     assign RD1 = (A1 == 0) ? 32'b0 : regs[A1];
     assign RD2 = (A2 == 0) ? 32'b0 : regs[A2];
+endmodule
+
+// Extend
+
+module extend (
+    input  wire [31:7] Instr,
+    input  wire [1:0]  ImmSrc,
+    output reg  [31:0] ImmExt
+);
+
+    always @(*) begin
+        case (ImmSrc)
+            2'b00: ImmExt = {{20{Instr[31]}}, Instr[31:20]}; // I Type
+            2'b01: ImmExt = {{20{Instr[31]}}, Instr[31:25], Instr[11:7]};  // S Type
+            2'b10: ImmExt = {{20{Instr[31]}}, Instr[7], Instr[30:25], Instr[11:8], 1'b0}; // 
+            2'b11: ImmExt = {{12{Instr[31]}}, Instr[19:12], Instr[20], Instr[30:21], 1'b0};
+            default: ImmExt = 32'hDEADBEEF;
+        endcase
+    end
+
 endmodule
