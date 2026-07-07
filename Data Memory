@@ -1,1 +1,16 @@
 
+// Data Memory
+
+module datam(input [31:0]A,input clk, input WE, input [31:0]WD, output [31:0]RD);
+
+reg [31:0] D_Mem[63:0];
+
+    // synchronous write
+    always @(posedge clk)
+        if (WE)
+            D_Mem[A[7:2]] <= WD;
+
+    // asynchronous read
+    assign RD = D_Mem[A[7:2]];
+
+endmodule
