@@ -1,1 +1,162 @@
 
+// Control Unit
+
+module ControlUnit (
+    input  wire [6:0] op,
+    input  wire [2:0] funct3,
+    input  wire       funct7b5, // Bit 30 of the instruction (Instr[30])
+    input  wire       Zero,     // From ALU, used for branches
+    output wire       RegWrite,
+    output wire [1:0] ImmSrc,
+    output wire       ALUSrc,
+    output wire       MemWrite,
+    output wire       ResultSrc,
+    output wire       PCSrc,
+    output wire [3:0] ALUControl
+);
+
+    wire [1:0] ALUOp;
+    wire       Branch;
+
+    // --- Main Decoder ---
+    MainDecoder md (
+        .op(op),
+        .RegWrite(RegWrite),
+        .ImmSrc(ImmSrc),
+        .ALUSrc(ALUSrc),
+        .MemWrite(MemWrite),
+        .ResultSrc(ResultSrc),
+        .Branch(Branch),
+        .ALUOp(ALUOp)
+    );
+
+    // --- ALU Decoder ---
+    ALUDecoder ad (
+        .ALUOp(ALUOp),
+        .funct3(funct3),
+        .funct7b5(funct7b5),
+        .ALUControl(ALUControl)
+    );
+
+    // --- Next PC Logic ---
+    // For BEQ (Branch if Equal): If it's a branch instruction AND ALU says they are equal (Zero=1)
+    assign PCSrc = Branch & Zero; 
+
+endmodule
+
+
+// ==========================================
+// Submodule 1: Main Decoder
+// ==========================================
+module MainDecoder (
+    input  wire [6:0] op,
+    output reg        RegWrite,
+    output reg  [1:0] ImmSrc,
+    output reg        ALUSrc,
+    output reg        MemWrite,
+    output reg        ResultSrc,
+    output reg        Branch,
+    output reg  [1:0] ALUOp
+);
+
+    always @(*) begin
+        case (op)
+            7'b0110011: begin // R-type (add, sub, and, or)
+                RegWrite  = 1'b1;
+                ImmSrc    = 2'bxx; // Don't care
+                ALUSrc    = 1'b0;  // Use RegFile output RD2
+                MemWrite  = 1'b0;
+                ResultSrc = 1'b0;  // Select ALU result
+                Branch    = 1'b0;
+                ALUOp     = 2'b10; // Look at funct fields
+            end
+            
+            7'b0010011: begin // I-type ALU (addi)
+                RegWrite  = 1'b1;
+                ImmSrc    = 2'b00; // I-type extension
+                ALUSrc    = 1'b1;  // Use immediate value
+                MemWrite  = 1'b0;
+                ResultSrc = 1'b0;  // Select ALU result
+                Branch    = 1'b0;
+                ALUOp     = 2'b00; // Force add execution
+            end
+
+            7'b0000011: begin // lw (Load Word)
+                RegWrite  = 1'b1;
+                ImmSrc    = 2'b00; // I-type extension
+                ALUSrc    = 1'b1;  // Use immediate for offset address
+                MemWrite  = 1'b0;
+                ResultSrc = 1'b1;  // Select Data Memory output
+                Branch    = 1'b0;
+                ALUOp     = 2'b00; // Force add for address calculation
+            end
+
+            7'b0100011: begin // sw (Store Word)
+                RegWrite  = 1'b0;
+                ImmSrc    = 2'b01; // S-type extension
+                ALUSrc    = 1'b1;  // Use immediate for offset address
+                MemWrite  = 1'b1;  // Enable memory write
+                ResultSrc = 1'bx;  // Don't care
+                Branch    = 1'b0;
+                ALUOp     = 2'b00; // Force add for address calculation
+            end
+
+            7'b1100011: begin // beq (Branch if Equal)
+                RegWrite  = 1'b0;
+                ImmSrc    = 2'b10; // B-type extension
+                ALUSrc    = 1'b0;  // Compare registers
+                MemWrite  = 1'b0;
+                ResultSrc = 1'bx;  // Don't care
+                Branch    = 1'b1;  // Assert Branch
+                ALUOp     = 2'b01; // Force subtract to check equality
+            end
+
+            default: begin // Safely handle unsupported/unknown instructions
+                RegWrite  = 1'b0;
+                ImmSrc    = 2'b00;
+                ALUSrc    = 1'b0;
+                MemWrite  = 1'b0;
+                ResultSrc = 1'b0;
+                Branch    = 1'b0;
+                ALUOp     = 2'b00;
+            end
+        endcase
+    end
+endmodule
+
+
+// ==========================================
+// Submodule 2: ALU Decoder
+// ==========================================
+module ALUDecoder (
+    input  wire [1:0] ALUOp,
+    input  wire [2:0] funct3,
+    input  wire       funct7b5, // Instr[30]
+    output reg  [3:0] ALUControl
+);
+
+    always @(*) begin
+        case (ALUOp)
+            2'b00: ALUControl = 4'b0010; // Always Add (for lw, sw, addi)
+            2'b01: ALUControl = 4'b0110; // Always Subtract (for beq)
+            
+            2'b10: begin // R-type instructions. Depend heavily on funct3/funct7
+                case (funct3)
+                    3'b000: begin
+                        // add vs sub uses bit 30 of instruction (funct7b5)
+                        if (funct7b5) 
+                            ALUControl = 4'b0110; // sub
+                        else          
+                            ALUControl = 4'b0010; // add
+                    end
+                    3'b010: ALUControl = 4'b0111; // slt (Set less than)
+                    3'b110: ALUControl = 4'b0001; // or
+                    3'b111: ALUControl = 4'b0000; // and
+                    default: ALUControl = 4'b1111; // Undefined
+                endcase
+            end
+            
+            default: ALUControl = 4'b1111;
+        endcase
+    end
+endmodule
