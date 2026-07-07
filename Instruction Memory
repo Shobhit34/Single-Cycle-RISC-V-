@@ -1,1 +1,7 @@
 
+// Instruction Memory
+
+module InsMem( input [31:0]A, output [31:0]RD);
+reg [31:0]I_Mem[63:0];
+assign RD=I_Mem[A[7:2]];
+endmodule
