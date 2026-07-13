@@ -1,5 +1,3 @@
-# Single-Cycle-RISC-V-
-
 # Single-Cycle RISC-V Processor (RV32I Subset)
 
 A single-cycle implementation of a subset of the RV32I instruction set in Verilog.
