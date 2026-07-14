@@ -24,3 +24,6 @@ assign PCNext=pc_src?PC_Target : PC_plus4;
 assign pc_
 
 
+InsMem Ins(.A(PC),.RD(instr));
+
+
