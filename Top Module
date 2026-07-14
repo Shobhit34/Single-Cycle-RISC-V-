@@ -1,1 +1,26 @@
 
+module top(input clk, input rst);
+
+wire [31:0]PCNext,PC_plus4,PC_Target,PC;
+wire [31:0]instr;
+wire [31:0] imm_ext;
+wire [31:0] rd1, rd2, alu_result, write_data, read_data;
+wire zero, pc_src, alu_src, reg_write, mem_write, mem_to_reg;
+wire [1:0]  imm_src, result_src;
+wire [2:0]  alu_ctrl;
+wire branch, jump;
+
+always @(posedge clk or posedge rst)
+begin
+if(rst)
+pc<=0;
+else
+pc<=pc+4;
+end
+
+assign PC_plus4=PC+4;
+assign PC_Target=imm_ext+PC;
+assign PCNext=pc_src?PC_Target : PC_plus4;
+assign pc_
+
+
