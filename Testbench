@@ -1,1 +1,288 @@
+`timescale 1ns/1ps
+`include "cpu_components.v"
+
+module tb_cpu_components;
+
+    integer errors = 0;
+    integer checks = 0;
+
+    task check32;
+        input [255:0] name;
+        input [31:0] got;
+        input [31:0] exp;
+        begin
+            checks = checks + 1;
+            if (got !== exp) begin
+                errors = errors + 1;
+                $display("FAIL [%0s] got=%h exp=%h", name, got, exp);
+            end else begin
+                $display("PASS [%0s] got=%h", name, got);
+            end
+        end
+    endtask
+
+    task check1;
+        input [255:0] name;
+        input got;
+        input exp;
+        begin
+            checks = checks + 1;
+            if (got !== exp) begin
+                errors = errors + 1;
+                $display("FAIL [%0s] got=%b exp=%b", name, got, exp);
+            end else begin
+                $display("PASS [%0s] got=%b", name, got);
+            end
+        end
+    endtask
+
+    // ---------------------------------------------------------
+    // add
+    // ---------------------------------------------------------
+    reg  [31:0] add_a, add_b;
+    wire [31:0] add_c;
+    add dut_add(.a(add_a), .b(add_b), .c(add_c));
+
+    // ---------------------------------------------------------
+    // mux2
+    // ---------------------------------------------------------
+    reg  [31:0] mux_a, mux_b;
+    reg         mux_s;
+    wire [31:0] mux_c;
+    mux2 dut_mux2(.a(mux_a), .b(mux_b), .s(mux_s), .c(mux_c));
+
+    // ---------------------------------------------------------
+    // InsMem
+    // ---------------------------------------------------------
+    reg  [31:0] im_A;
+    wire [31:0] im_RD;
+    InsMem dut_insmem(.A(im_A), .RD(im_RD));
+
+    // ---------------------------------------------------------
+    // ALU
+    // ---------------------------------------------------------
+    reg  [31:0] alu_A, alu_B;
+    reg  [3:0]  alu_ctrl;
+    wire [31:0] alu_res;
+    wire        alu_zero;
+    ALU dut_alu(.A(alu_A), .B(alu_B), .ALUControl(alu_ctrl), .ALUResult(alu_res), .Zero(alu_zero));
+
+    // ---------------------------------------------------------
+    // regfile
+    // ---------------------------------------------------------
+    reg         rf_clk, rf_we3;
+    reg  [4:0]  rf_a1, rf_a2, rf_a3;
+    reg  [31:0] rf_wd3;
+    wire [31:0] rf_rd1, rf_rd2;
+    regfile dut_regfile(.CLK(rf_clk), .WE3(rf_we3), .A1(rf_a1), .A2(rf_a2), .A3(rf_a3),
+                         .WD3(rf_wd3), .RD1(rf_rd1), .RD2(rf_rd2));
+
+    always #5 rf_clk = ~rf_clk;
+
+    // ---------------------------------------------------------
+    // extend
+    // ---------------------------------------------------------
+    reg  [31:0] ext_instr_full;
+    reg  [1:0]  ext_immsrc;
+    wire [31:0] ext_out;
+    extend dut_extend(.Instr(ext_instr_full[31:7]), .ImmSrc(ext_immsrc), .ImmExt(ext_out));
+
+    // ---------------------------------------------------------
+    // datam
+    // ---------------------------------------------------------
+    reg         dm_clk, dm_we;
+    reg  [31:0] dm_A, dm_WD;
+    wire [31:0] dm_RD;
+    datam dut_datam(.A(dm_A), .clk(dm_clk), .WE(dm_we), .WD(dm_WD), .RD(dm_RD));
+
+    always #5 dm_clk = ~dm_clk;
+
+    // ---------------------------------------------------------
+    // ControlUnit
+    // ---------------------------------------------------------
+    reg  [6:0] cu_op;
+    reg  [2:0] cu_funct3;
+    reg        cu_funct7b5;
+    reg        cu_zero;
+    wire       cu_regwrite, cu_alusrc, cu_memwrite, cu_resultsrc, cu_pcsrc;
+    wire [1:0] cu_immsrc;
+    wire [3:0] cu_aluctrl;
+    ControlUnit dut_cu(.op(cu_op), .funct3(cu_funct3), .funct7b5(cu_funct7b5), .Zero(cu_zero),
+                        .RegWrite(cu_regwrite), .ImmSrc(cu_immsrc), .ALUSrc(cu_alusrc),
+                        .MemWrite(cu_memwrite), .ResultSrc(cu_resultsrc), .PCSrc(cu_pcsrc),
+                        .ALUControl(cu_aluctrl));
+
+    initial begin
+        rf_clk = 0;
+        dm_clk = 0;
+
+        $display("================ add ================");
+        add_a = 32'd10; add_b = 32'd15; #1;
+        check32("add 10+15", add_c, 32'd25);
+        add_a = 32'hFFFFFFFF; add_b = 32'd1; #1;
+        check32("add overflow wrap", add_c, 32'd0);
+
+        $display("================ mux2 ================");
+        mux_a = 32'hAAAA_AAAA; mux_b = 32'h5555_5555;
+        mux_s = 1'b1; #1;
+        check32("mux2 s=1 selects a", mux_c, 32'hAAAA_AAAA);
+        mux_s = 1'b0; #1;
+        check32("mux2 s=0 selects b", mux_c, 32'h5555_5555);
+
+        $display("================ InsMem ================");
+        dut_insmem.I_Mem[0] = 32'h00500093; // preload word 0
+        dut_insmem.I_Mem[1] = 32'hDEADBEEF; // preload word 1
+        im_A = 32'd0; #1;
+        check32("InsMem word0", im_RD, 32'h00500093);
+        im_A = 32'd4; #1;
+        check32("InsMem word1", im_RD, 32'hDEADBEEF);
+
+        $display("================ ALU ================");
+        alu_A = 32'd6; alu_B = 32'd4; alu_ctrl = 4'b0000; #1; // AND
+        check32("ALU AND", alu_res, 32'd6 & 32'd4);
+        alu_A = 32'd6; alu_B = 32'd4; alu_ctrl = 4'b0001; #1; // OR
+        check32("ALU OR", alu_res, 32'd6 | 32'd4);
+        alu_A = 32'd6; alu_B = 32'd4; alu_ctrl = 4'b0010; #1; // ADD
+        check32("ALU ADD", alu_res, 32'd10);
+        alu_A = 32'd6; alu_B = 32'd4; alu_ctrl = 4'b0110; #1; // SUB
+        check32("ALU SUB", alu_res, 32'd2);
+        check1 ("ALU Zero(6-4!=0)", alu_zero, 1'b0);
+        alu_A = 32'd4; alu_B = 32'd4; alu_ctrl = 4'b0110; #1; // SUB -> 0
+        check32("ALU SUB equal", alu_res, 32'd0);
+        check1 ("ALU Zero(4-4==0)", alu_zero, 1'b1);
+        alu_A = 32'd3; alu_B = 32'd4; alu_ctrl = 4'b0111; #1; // SLT
+        check32("ALU SLT true", alu_res, 32'd1);
+        alu_A = 32'd4; alu_B = 32'd3; alu_ctrl = 4'b0111; #1; // SLT
+        check32("ALU SLT false", alu_res, 32'd0);
+        alu_A = 32'd6; alu_B = 32'd4; alu_ctrl = 4'b1100; #1; // NOR
+        check32("ALU NOR", alu_res, ~(32'd6 | 32'd4));
+        alu_A = 32'd6; alu_B = 32'd4; alu_ctrl = 4'b1010; #1; // undefined -> default
+        check32("ALU default", alu_res, 32'd0);
+
+        $display("================ regfile ================");
+        // write x5 = 0x1234, x6 = 0x5678
+        rf_we3 = 1; rf_a3 = 5'd5; rf_wd3 = 32'h1234;
+        @(posedge rf_clk); #1;
+        rf_a3 = 5'd6; rf_wd3 = 32'h5678;
+        @(posedge rf_clk); #1;
+        rf_we3 = 0;
+        rf_a1 = 5'd5; rf_a2 = 5'd6; #1;
+        check32("regfile RD1=x5", rf_rd1, 32'h1234);
+        check32("regfile RD2=x6", rf_rd2, 32'h5678);
+        // x0 hardwired to zero even if a write is attempted
+        rf_we3 = 1; rf_a3 = 5'd0; rf_wd3 = 32'hFFFFFFFF;
+        @(posedge rf_clk); #1;
+        rf_we3 = 0;
+        rf_a1 = 5'd0; #1;
+        check32("regfile x0 stays 0", rf_rd1, 32'd0);
+
+        $display("================ extend ================");
+        // I-type: sign bit set, imm = all 1s -> sign extend to 0xFFFFFFFF
+        ext_instr_full = 32'hFFF00000; ext_immsrc = 2'b00; #1;
+        check32("extend I-type neg", ext_out, 32'hFFFFFFFF);
+        // I-type: positive small value 5 in instr[31:20]
+        ext_instr_full = 32'h00500000; ext_immsrc = 2'b00; #1;
+        check32("extend I-type pos", ext_out, 32'd5);
+        // S-type: instr[31:25]=0, instr[11:7]=5 -> imm=5
+        ext_instr_full = 32'h00000280; ext_immsrc = 2'b01; #1;
+        check32("extend S-type", ext_out, 32'd5);
+        // B-type: all relevant bits 0 -> imm = 0
+        ext_instr_full = 32'h00000000; ext_immsrc = 2'b10; #1;
+        check32("extend B-type zero", ext_out, 32'd0);
+        // J-type: all relevant bits 0 -> imm = 0
+        ext_instr_full = 32'h00000000; ext_immsrc = 2'b11; #1;
+        check32("extend J-type zero", ext_out, 32'd0);
+
+        $display("================ datam ================");
+        dm_A = 32'd8; dm_WD = 32'hCAFEBABE; dm_we = 1;
+        @(posedge dm_clk); #1;
+        dm_we = 0; #1;
+        check32("datam read back", dm_RD, 32'hCAFEBABE);
+        // NOTE: D_Mem is never initialized/reset in the DUT, so an address
+        // that has never been written reads back as X, not 0. This is a
+        // property of the given design (no reset logic), so we check for X
+        // rather than asserting an incorrect 0 value.
+        dm_A = 32'd12; #1;
+        checks = checks + 1;
+        if (^dm_RD !== 1'bx) begin
+            errors = errors + 1;
+            $display("FAIL [datam unwritten addr is X] got=%h exp=x (uninitialized mem)", dm_RD);
+        end else begin
+            $display("PASS [datam unwritten addr is X] got=%h (uninitialized, as expected - no reset in DUT)", dm_RD);
+        end
+
+        $display("================ ControlUnit ================");
+        // R-type add: op=0110011, funct3=000, funct7b5=0
+        cu_op = 7'b0110011; cu_funct3 = 3'b000; cu_funct7b5 = 1'b0; cu_zero = 1'b0; #1;
+        check1 ("CU R-add RegWrite", cu_regwrite, 1'b1);
+        check1 ("CU R-add ALUSrc", cu_alusrc, 1'b0);
+        check1 ("CU R-add MemWrite", cu_memwrite, 1'b0);
+        check1 ("CU R-add ResultSrc", cu_resultsrc, 1'b0);
+        check1 ("CU R-add PCSrc", cu_pcsrc, 1'b0);
+        check32("CU R-add ALUControl", {28'b0,cu_aluctrl}, 32'b0010);
+
+        // R-type sub: funct7b5=1
+        cu_op = 7'b0110011; cu_funct3 = 3'b000; cu_funct7b5 = 1'b1; #1;
+        check32("CU R-sub ALUControl", {28'b0,cu_aluctrl}, 32'b0110);
+
+        // R-type or / and / slt
+        cu_funct3 = 3'b110; cu_funct7b5 = 1'b0; #1;
+        check32("CU R-or ALUControl", {28'b0,cu_aluctrl}, 32'b0001);
+        cu_funct3 = 3'b111; #1;
+        check32("CU R-and ALUControl", {28'b0,cu_aluctrl}, 32'b0000);
+        cu_funct3 = 3'b010; #1;
+        check32("CU R-slt ALUControl", {28'b0,cu_aluctrl}, 32'b0111);
+
+        // addi (I-type ALU)
+        cu_op = 7'b0010011; cu_funct3 = 3'b000; cu_funct7b5 = 1'b0; #1;
+        check1 ("CU addi RegWrite", cu_regwrite, 1'b1);
+        check1 ("CU addi ALUSrc", cu_alusrc, 1'b1);
+        check32("CU addi ImmSrc", {30'b0,cu_immsrc}, 32'b00);
+        check32("CU addi ALUControl", {28'b0,cu_aluctrl}, 32'b0010);
+
+        // lw
+        cu_op = 7'b0000011; #1;
+        check1 ("CU lw RegWrite", cu_regwrite, 1'b1);
+        check1 ("CU lw ALUSrc", cu_alusrc, 1'b1);
+        check1 ("CU lw MemWrite", cu_memwrite, 1'b0);
+        check1 ("CU lw ResultSrc", cu_resultsrc, 1'b1);
+        check32("CU lw ALUControl", {28'b0,cu_aluctrl}, 32'b0010);
+
+        // sw
+        cu_op = 7'b0100011; #1;
+        check1 ("CU sw RegWrite", cu_regwrite, 1'b0);
+        check1 ("CU sw ALUSrc", cu_alusrc, 1'b1);
+        check1 ("CU sw MemWrite", cu_memwrite, 1'b1);
+        check32("CU sw ImmSrc", {30'b0,cu_immsrc}, 32'b01);
+        check32("CU sw ALUControl", {28'b0,cu_aluctrl}, 32'b0010);
+
+        // beq, not taken (Zero=0)
+        cu_op = 7'b1100011; cu_zero = 1'b0; #1;
+        check1 ("CU beq RegWrite", cu_regwrite, 1'b0);
+        check32("CU beq ImmSrc", {30'b0,cu_immsrc}, 32'b10);
+        check32("CU beq ALUControl", {28'b0,cu_aluctrl}, 32'b0110);
+        check1 ("CU beq PCSrc not-taken", cu_pcsrc, 1'b0);
+
+        // beq, taken (Zero=1)
+        cu_zero = 1'b1; #1;
+        check1 ("CU beq PCSrc taken", cu_pcsrc, 1'b1);
+
+        // unsupported opcode -> safe defaults
+        cu_op = 7'b1111111; cu_zero = 1'b0; #1;
+        check1 ("CU default RegWrite", cu_regwrite, 1'b0);
+        check1 ("CU default MemWrite", cu_memwrite, 1'b0);
+        check1 ("CU default PCSrc", cu_pcsrc, 1'b0);
+
+        $display("=========================================");
+        $display("Total checks: %0d   Errors: %0d", checks, errors);
+        if (errors == 0)
+            $display("ALL TESTS PASSED");
+        else
+            $display("SOME TESTS FAILED");
+        $display("=========================================");
+
+        $finish;
+    end
+
+endmodule
 
