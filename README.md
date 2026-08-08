@@ -6,6 +6,9 @@ RISC - V Instruction Set Reference
 
 <img width="696" height="872" alt="image" src="https://github.com/user-attachments/assets/4618f88d-c290-47b7-90ee-a1be328a5563" />
 
-Components : 
+Components(modules) : 
 
 Arithmetic Logic Unit(ALU) -- 
+
+Adder --  Adds two inputs to give out the required 32bit Output.
+
