@@ -12,3 +12,5 @@ Arithmetic Logic Unit(ALU) --
 
 Adder --  Adds two inputs to give out the required 32bit Output.
 
+mux2 -- A general purpose 2:1 Multiplexer
+
